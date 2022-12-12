@@ -33,51 +33,41 @@ Monkey 3:
     If true: throw to monkey 0
     If false: throw to monkey 1"""
 
-q = lambda x: sum([int(d) for d in str(x)])
+class Item():
+    should_norm = True
+    def __init__(self, n) -> None:
+        self.un = { 
+            2: None, 
+            3: None, 
+            5: None, 
+            7: None, 
+            11: None, 
+            13: None, 
+            17: None, 
+            19: None,
+            23: None
+        }
+        for u in self.un:
+            self.un[u] = n
 
-def qa(x,k):
+    def norm(self):
+        if self.should_norm:
+            for u in self.un:
+                self.un[u] %= u
 
-    x = str(x)[::-1]
-    is_neg = False
-    if x.endswith("-"):
-        is_neg = True
-        x = x[0:-1]
-    parts = []
-    for st in range(0, len(x), k):
-        en = st + k
-        if en > len(x) - 1:
-            en = len(x)
-        parts.append(int(x[st:en][::-1]))
-    
-    alt = False
-    res = 0
-    for part in parts:
-        if alt:
-            res -= part
-        else:
-            res += part
-        alt = not alt
+    def apply(self, op):
+        for u in self.un:
+            self.un[u] = op(self.un[u])
+        self.norm()
 
-    return res * (-1 if is_neg else 1)
+    def get(self, d):
+        return self.un[d] % d == 0
 
-
-def digest(x, k):
-    dig = x
-    while len(str(dig)) > 10:
-        dig = qa(dig, k)
-    return dig
-
-
-rules = {
-    2: lambda x: str(x)[-1] in ["0", "2", "4", "6", "8"],
-    3: lambda x: q(x) % 3 == 0,
-    5: lambda x: str(x)[-1] in ["0", "5"],
-    7: lambda x: qa(digest(x,3), 3) % 7 == 0,
-    11: lambda x: qa(digest(x,1), 1) % 11 == 0,
-    13: lambda x: qa(digest(x,3), 3) % 13 == 0,
-    17: lambda x: qa(digest(x,8), 8) % 17 == 0,
-    19: lambda x: qa(digest(x,9), 9) % 19 == 0,
-}
+    def __repr__(self) -> str:
+        ret = ""
+        for u in self.un:
+            ret += f"{u} - {self.un[u]}\n"
+        return ret
 
 if __name__ == '__main__':
     with open("input-11") as f:
@@ -88,6 +78,7 @@ if __name__ == '__main__':
         mm = []
         for monke in [monke.splitlines() for monke in monkes]:
             si = [int(m) for m in monke[1].split("Starting items: ")[1].split(", ")]
+            si = [Item(s) for s in si]
             op = re.match(r"\s\sOperation\: new = old ([\+,\-\*]) ((\d+)|old)", monke[2], re.DOTALL)
             opdebug = None
             if op[2] == "old":
@@ -95,8 +86,7 @@ if __name__ == '__main__':
                     op = lambda x: x + x
                     opdebug = f"add old to old"
                 elif op[1] == "*":
-                    # squaring is a noop in mod N
-                    op = lambda x: x
+                    op = lambda x: x * x
                     opdebug = f"mult old to old"
                 else:
                     raise Exception("op unsupported", op[2], op[1])
@@ -121,13 +111,10 @@ if __name__ == '__main__':
         # simulation
         hist = { i: 0 for i in range(len(mm))}
         R = 10000
-        DIV = False
         DEBUG = False
 
         import time
         for round in range(R):
-            if round % 100 == 0:
-                print(f"round {round}")
             for mi in range(len(mm)):
                 monke = mm[mi]
                 while len(monke["items"]) > 0:
@@ -135,18 +122,19 @@ if __name__ == '__main__':
                     item = monke["items"].pop(0)
                     hist[mi] += 1
                     # apply op
-                    item = monke["op"](item)
-                    # monke gets bored divide by 3
-                    if DIV:
-                        item = item // 3
+                    item.apply(monke["op"])
                     # test
-                    rule = rules[monke["test"]]
-                    goto = "true" if rule(item) else "false"
+                    goto = "true" if item.get(monke["test"]) else "false"
                     mm[monke[goto]]["items"].append(item)
-                    # print(f"item {item} thrown to {monke[goto]}")
-            for mi in range(len(mm)):
-                if DEBUG:
-                    print(f"Monkey {mi}: {', '.join([str(it) for it in mm[mi]['items']])}")
+
+            round_i = round + 1
+            if DEBUG:
+                if round_i in [1,2,20,1000]:
+                    print(f"== After round {round + 1} ==")
+                    for b in hist:
+                        print(f"Monkey {b} inspected items {hist[b]} times.")
+
+                    print("")
 
 
         tot = sorted(list(hist.values()))

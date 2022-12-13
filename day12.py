@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import os
-import re
 
-class Map():
-    def __init__(self) -> None:
-        pass
+
+from dijkstra import Dijkstra, Node
         
 
 example = """Sabqponm
@@ -15,121 +12,95 @@ abdefghi"""
 
 import numpy as np
 
-def find_start(m):
+def find(m, k):
     for y in range(len(m)):
         for x in range(len(m[0])):
-            if m[y][x] == "S":
+            if m[y][x] == k:
                 return (x,y)
 
-def find_means(m):
-    poss = {}
-    for i in range(ord("a"), ord("z")):
-        c = chr(i)
-        for y in range(len(m)):
-            for x in range(len(m[0])):
-                if m[y][x] == c:
-                    if c not in poss:
-                        poss[c] = []
-                    poss[c].append((x,y))
 
-    ret = {}
-    for k in poss:
-        mean = (0,0)
-        for pos in poss[k]:
-            mean = (mean[0] + pos[0], mean[1] + pos[1])
-
-        mean = (mean[0] // len(poss[k]), mean[1] // len(poss[k]))
-        ret[k] = mean
+def find_all(m, k):
+    ret = []
+    for y in range(len(m)):
+        for x in range(len(m[0])):
+            if m[y][x] == k:
+                ret.append((x,y))
 
     return ret
 
-            
-class Curs():
-    def __init__(self, pos, val, prev = []) -> None:
-        self.pos = pos
-        self.val = val
-        self.prev = prev
-        self.visited = set(prev)
+def get_nbs(pos, bounds):
+    candidates = [
+        (pos[0] + 1, pos[1]),
+        (pos[0], pos[1] + 1),
+        (pos[0] - 1, pos[1]),
+        (pos[0], pos[1] - 1),
+    ]
 
-    def can_goto(self, new_val, new_pos):
-        if new_pos in self.visited:
-            return False
+    ret = []
+    for candidate in candidates:
+        if candidate[1] >= bounds[1]:
+            continue
+        if candidate[1] < 0:
+            continue
+        if candidate[0] >= bounds[0]:
+            continue
+        if candidate[0] < 0:
+            continue
+        ret.append(candidate)
 
-        if self.val == "S":
-            return new_val == "a"
+    return ret
         
-        if new_val == "E" and self.val != "z":
-            return False
+def can_goto(m, pos, newpos):
+    val = m[pos[1]][pos[0]]
+    new_val = m[newpos[1]][newpos[0]]
 
-        return (ord(new_val) - ord(self.val)) <= 1
-
-    def get(self, m):
-        return m[self.pos[1]][self.pos[0]]
+    if val == "S":
+        return new_val == "a"
     
-    def goto(self, next_pos, next_val):
-        return Curs(next_pos, next_val, self.prev + [self.pos])
+    if new_val == "E":
+        return val == "z"
 
-    def get_nbs(self, bounds):
-        pos = self.pos
-        candidates = [
-            (pos[0] + 1, pos[1]),
-            (pos[0], pos[1] + 1),
-            (pos[0] - 1, pos[1]),
-            (pos[0], pos[1] - 1),
-        ]
+    return (ord(new_val) - ord(val)) <= 1
 
-        ret = []
-        for candidate in candidates:
-            if candidate[1] >= bounds[1]:
-                continue
-            if candidate[1] < 0:
-                continue
-            if candidate[0] >= bounds[0]:
-                continue
-            if candidate[0] < 0:
-                continue
-            ret.append(candidate)
 
-        return ret
+def build_graph(m):
+    nodes = []
+    for y in range(len(m)):
+        for x in range(len(m[0])):
+            a = (x,y)
+            nbs = get_nbs(a, (len(m[0]), len(m)))
+            for b in nbs:
+                if can_goto(m, a, b):
+                    nodes.append(Node((a,b), 1))
+    return nodes
 
+from multiprocessing import Pool
 
 with open("input-12") as f:
     m = f.readlines()
     # m = example.splitlines()
-
     m = [[c for c in mm] for mm in m]
+    graph = build_graph(m)
+    the_end = find(m, "E")
+    results = []
+    def solve(pos):
+        x,y = pos
+        global results
+        if m[y][x] == "a" or m[y][x] == "S":
+            pos = (x,y)
+            d = Dijkstra(graph, pos)
+            d.solve()
+            result = d.costs[the_end]["cost"]
+            if m[y][x] == "S":
+                print("part 1", result)
+            # print(f"result for {pos} = {result}")
+            return result
+        else: 
+            return 1e20
 
-    pos = find_start(m)
-    curs = [Curs(pos, "S")]
-    means = find_means(m)
-
-    def dist(pos, val):
-        global means
-        nxt = chr(ord(val)+1)
-        if val == "S":
-            nxt = "a"
-        if val == "z":
-            nxt = "E"
-        mean = means[nxt]
-        return abs(mean[0] - pos[0]) + abs(mean[1] - pos[1])
-
-    while True:
-        if len(curs) == 0:
-            break
-
-
-        curs = sorted(curs, key=lambda c: ord(c.val)*10000 + dist(c.pos, c.val), reverse=True)
-        cur = curs.pop(0)
-        if cur.get(m) == "E":
-            print(f"found exit after {len(cur.prev)} steps\npath={' '.join([f'{m[prev[1]][prev[0]]}' for prev in cur.prev])}")
-            continue
-        # visited.add(cur.pos)
-        nbs = cur.get_nbs((len(m[0]), len(m)))
-        print(cur.pos, cur.val)
-        # print(f"currently at pos {cur.pos} with value {cur.val}, got {len(nbs)} possible nbs\nhistory={cur.prev}")
-        for nb in nbs:
-            next_val = m[nb[1]][nb[0]]
-            if cur.can_goto(next_val, nb):
-                nw = cur.goto(nb, next_val)
-                # print("from", cur.pos, "goto", nb, "with value", next_val)
-                curs.append(nw)
+    with Pool(16) as p:
+        x = 0
+        results = p.map(solve, [(x, y) for y in range(len(m))])
+        x = 2
+        results += p.map(solve, [(x, y) for y in range(len(m))])
+        print("part 2", min(results))

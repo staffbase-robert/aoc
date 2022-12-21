@@ -32,6 +32,22 @@ class Valve():
     def __repr__(self) -> str:
         return f"{self.name}: flowrate: {self.flowrate}, doors: {self.doors}"
 
+class Route():
+    def __init__(self, segments = []) -> None:
+        self.segments = segments
+
+    def get_score(self, max_clock):
+        return sum([r[0].flowrate * (max_clock - r[1]) for r in self.segments])
+
+    def grow(self, valve, minute):
+        new_segments = copy.copy(self.segments)
+        new_segments.append((valve, minute))
+        return Route(new_segments)
+
+    def get_hash(self):
+        return ",".join([f"{seg.name}_{ment}" for seg, ment in self.segments])
+
+
 import graphviz
 
 def visualize(valve):
@@ -84,32 +100,23 @@ with open("input-16") as f:
         return routes
 
     max_clock = 30
-    best = -1
-    def nav(current, targets, minute=0, rewards=[], order_of_opens=[]):
-        global best
 
-        if len(targets) == 0 or minute <= max_clock:
-            score = sum([r[0] * (max_clock - r[1]) for r in rewards])
-            if score > best:
-                print(f"found new best {score},\nrewards={', '.join([str(r) for r in rewards])}")
-                best = score
-
+    results = dict()
+    def nav(current, targets, minute=0, route=Route()):
+        global results
+        if len(results) % 100 == 0:
+            print(len(results))
+        results[route.get_hash()] = route.get_score(max_clock)
         for vi in range(len(targets)):
             v = targets[vi]
             routes = find_routes(current, v)
             shortest = min(routes, key=lambda r: len(r))
             remaining = targets[0:vi] + targets[vi+1:]
             clock = minute + len(shortest) + 1
-
-            new_order_of_opens = copy.copy(order_of_opens)
-            new_order_of_opens.append((v.name, v.flowrate))
-            new_rewards = copy.copy(rewards)
-            new_rewards.append([v.flowrate, clock, v.name])
             if len(remaining) >= 0:
                 if clock <= max_clock:
                     # print(f"--- reached new reward in minute={clock} - collecting {reward} reward ---")
-                    nav(v, remaining, clock, rewards=new_rewards, order_of_opens=new_order_of_opens)
+                    nav(v, remaining, clock, route=route.grow(v, clock))
         
     start = find_by_name(valves, "AA")
-    nav(start ,copy.copy(rewards))
-    print(best)
+    nav(start, rewards)

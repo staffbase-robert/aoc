@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from copy import deepcopy
-
 example = ">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>"
 
 shapes = [
@@ -22,7 +20,7 @@ shapes = [
         [0, 0, 1, 0],
         [1, 1, 1, 0],
     ],
-       [
+    [
         [1, 0, 0, 0],
         [1, 0, 0, 0],
         [1, 0, 0, 0],
@@ -36,21 +34,31 @@ shapes = [
     ],
 ]
 
+class TX():
+    def __init__(self, ops) -> None:
+        self.ops = ops
+    
+    def commit(self, map):
+        for op in self.ops:
+            op(map)
+
 class Map():
     def __init__(self, data = {}) -> None:
         self.data = data
-        self.trimmed_height = 0
+        self.max = 0
 
     def __getitem__(self, key):
         y = key[0]
         x = key[1]
+        if x < 0 or x >= 7 or y < 0:
+            return 2
         if y not in self.data:
             return 0
         if x not in self.data[y]:
             return 0
         return self.data[y][x]
 
-    def __setitem__(self, key, value):
+    def set(self, key, value):
         y = key[0]
         x = key[1]
         if x < 0:
@@ -61,68 +69,33 @@ class Map():
             return
         if y not in self.data:
             self.data[y] = {}
+            if y + 1 > self.max:
+                self.max = y + 1
         self.data[y][x] = value
-
-    def count(self):
-        tot = 0
-        for y in self.data:
-            for x in self.data[y]:
-                tot += self.data[y][x]
-        return tot
-
-    def max(self):
-        if self.data == {}:
-            return 0
-        return max([k for k in self.data]) + 1
-
-    def copy(self):
-        return Map(deepcopy(self.data))
-
-    def find_bottom(self):
-        start_height = self.max()
-        lowpoints = []
-        # find lowpoints
-        for x in range(7):
-            y = start_height
-            while True:
-                if y <= 0:
-                    lowpoints.append(0)
-                    break
-                if self[y,x] == 1:
-                    lowpoints.append(y)
-                    break
-                y -= 1
-        lowpoint = min(lowpoints) - 100
-        if lowpoint < 0:
-            lowpoint = 0
-        return lowpoint
-
-    def trim_map(self):
-        bot = self.find_bottom()
-        for y in range(0,bot):
-            if y in self.data:
-                del self.data[y]
-        
-        self.trimmed_height += bot
-        return bot
 
     def __repr__(self) -> str:
         ret = ""
         if self.data == {}:
             return ret
-        for y in range(self.max(), -1, -1):
+        for y in range(self.max, -1, -1):
             for x in range(0, 7):
                 ret += "#" if self[y, x] == 1 else "."
             ret += "\n"
         return ret
 
-    def apply(self, h, l, shape, mult=1):
+    # returns None, when there is a collision
+    def get_tx(self, h, l, shape):
+        ops = []
         for y in range(len(shape)):
             for x in range(len(shape[0])):
                 if shape[y][x] == 1:
                     Y = 4 - y - 1
-                    # print(f"debug apply h={h} y={y} Y={Y}")
-                    self[h + Y, l + x] = 1
+                    target = (l + x, h + Y)
+                    if self[target[1], target[0]] >= 1:
+                        return None
+                    op = lambda s, target=target: s.set((target[1], target[0]), 1)
+                    ops.append(op)
+        return TX(ops)
 
 class Tetris():
     def __init__(self, shapes, jets) -> None:
@@ -136,7 +109,7 @@ class Tetris():
 
 
     def step(self):
-        h = self.map.max() + 4
+        h = self.map.max + 4
         l = 2
         
         shape = self.shapes[self.current_shape]
@@ -144,24 +117,22 @@ class Tetris():
         while True:
             # try move down, if collides -> break
             h -= 1
-            tmp_map = self.map.copy()
-            tmp_map.apply(h, l, shape)
-            diff = tmp_map.count() - shape_count - self.map.count()
+            tx = self.map.get_tx(h, l, shape)
             # print(f"move down h={h} l={l} diff={diff}")
-            if diff < 0:
+            if tx == None:
                 h += 1
                 # apply final position
-                self.map.apply(h, l, shape)
+                new_tx = self.map.get_tx(h, l, shape)
+                assert(new_tx != None)
+                new_tx.commit(self.map)
                 break
 
             # try move with jet, if collides -> do move back
             j = self.jets[self.current_jet]
             l += j
-            tmp_map = self.map.copy()
-            tmp_map.apply(h, l, shape)
-            diff = diff = tmp_map.count() - shape_count - self.map.count()
+            tx = self.map.get_tx(h, l, shape)
             # print(f"move in jet h={h} l={l} diff={diff}")
-            if diff < 0:
+            if tx == None:
                 l -= j
             self.current_jet += 1
             self.current_jet %= len(self.jets)
@@ -169,18 +140,49 @@ class Tetris():
         # print(f"h={h},l={l},cs={self.current_shape}")
         self.current_shape += 1
         self.current_shape %= len(self.shapes)
+
 with open("input-17") as f:
-    jets = example
-    # jets = f.read()
+    # jets = example
+    jets = f.read()
     jets = [+1 if c == ">" else -1 for c in jets]
     t = Tetris(shapes, jets)
 
     from tqdm import tqdm
-    heights = []
-    for step in (pbar := tqdm(range(2022))):
+    heights = [0]
+    for step in (pbar := tqdm(range(2022*10))):
         t.step()
-        heights.append(t.map.max() + t.map.trimmed_height)
+        heights.append(t.map.max )
         
-    print(t.map)
-    print(t.map.max() + t.map.trimmed_height)
-    
+    print(t.map.max)
+
+
+    print("trying to find frequency")
+    f = None
+    d = 1
+    while True:
+        iv = d
+        cdiff = []
+        for i in range(iv*2, len(heights), iv):
+            y = heights[i] - heights[i-iv]
+            cdiff.append(y)
+            if len(cdiff) > 50:
+                break
+        if len(cdiff) == 1:
+            break
+        if len(set(cdiff)) == 1:
+            print(f"found frequency for {d} ({d / len(jets)} in units of len(jets))")
+            f = d
+            break
+        d += 1
+
+
+    s = 1000000000000
+    rep = (s // f) - 1
+    rem = s % f
+    N = heights[f]
+    M = heights[f*2] - heights[f]
+    R = heights[f + rem] - N
+    pred = rep * M + N + R
+
+    # remainder
+    print(pred)

@@ -20,9 +20,10 @@ card_ranks = {
 }
 
 class Hand():
-    def __init__(self, cards: str, id: Optional[str] = None) -> None:
+    def __init__(self, cards: str, id: Optional[str] = None, bet: int = -1) -> None:
         self.cards = cards
         self.id = cards if id is None else id
+        self.bet = bet
     def to_dict(self) -> dict[str, int]:
         cd = {}
         for c in self.cards:
@@ -87,6 +88,12 @@ class Hand():
         }
         return (f"{self.cards}|{self.id}|{self.get_rank()}|{nice_name[self.get_rank()]}")
 
+def solution(l: list[Hand]) -> int:
+    solution = 0
+    for i in range(len(l)):
+        solution += l[i].bet * (i+1)
+    return solution
+
 assert Hand("AAAAQ").get_rank() == 5
 assert Hand("AAAAA").get_rank() == 6
 assert Hand("AAAA2").get_rank() == 5
@@ -105,13 +112,12 @@ with open("input-7") as f:
 # KK677 28
 # KTJJT 220
 # QQQJA 483""".splitlines()
-    cards_with_bet: list[tuple[Hand, int]] = [[Hand(line.split(" ")[0],line.split(" ")[0]), int(line.split(" ")[1])] for line in lines]
-    ranked_cards = sorted(cards_with_bet, key=lambda cb: cb[0])
-    solution = 0
-    for i in range(len(ranked_cards)):
-        bet = ranked_cards[i][1]
-        solution += bet * (i+1)
-    print(solution)
+    hands: list[Hand] = []
+    for line in lines:
+        card, bet = line.split(" ")
+        hands.append(Hand(cards=card, id=card, bet=int(bet)))
+    ranked_hands = sorted(hands)
+    print(solution(sorted(ranked_hands)))
     # part2
     card_ranks["J"] = -1
 
@@ -129,18 +135,10 @@ with open("input-7") as f:
                 return new_cards
         return []
 
-    sub_ranking: list[tuple[Hand, int]] = []
-    for card, bet in cards_with_bet:
+    sub_ranking: list[Hand] = []
+    for card in ranked_hands:
         new_cards = variation(card.cards)
-        best = max([[Hand(new_card, card.cards), bet] for new_card in new_cards], key=lambda x: x[0])
-        sub_ranking += [best]
-
-    for card,_ in sub_ranking:
+        sub_ranking.append(max([Hand(cards=new_card, bet=card.bet, id=card.cards) for new_card in new_cards]))
+    for card in sub_ranking:
         assert "J" not in card.cards
-
-    ranked_cards = sorted(sub_ranking, key=lambda cb: cb[0])
-    solution = 0
-    for i in range(len(ranked_cards)):
-        bet = ranked_cards[i][1]
-        solution += bet * (i+1)
-    print(solution)
+    print(solution(sorted(sub_ranking)))

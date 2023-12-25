@@ -3,3 +3,4 @@ input-*
 __pycache__
 *.gv
 *.gv.pdf
+example-*
